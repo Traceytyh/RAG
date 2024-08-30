@@ -14,11 +14,11 @@ RAG can be split into pre and on production. In pre-production, document loaders
 Ideally, text chunks have similar semantic meanings and sizes of tokens suitable for the model. A common way is to split by character with overlaps between chunks to keep the context. RecursiveCharacterTextSplitter splits the documents by the specified 'separators' parameter and get further chunked to the tokenizer's maximum sequence length if it is still large.
     from langchain.text_splitter import RecursiveCharacterTextSplitter
     MARKDOWN_SEPARATORS = [
-        "\n#{1,6} ",
-        "```\n",
-        "\n\\*\\*\\*+\n",
-        "\n---+\n",
-        "\n___+\n",
+	"\n#{1,6} ",
+	"```\n",
+	"\n\\*\\*\\*+\n",
+	 "\n---+\n",
+	"\n___+\n",
         "\n\n",
         "\n",
         " ",
