@@ -12,36 +12,37 @@ RAG can be split into pre and on production. In pre-production, document loaders
 ## Pre-production
 ### Text Splitting
 Ideally, text chunks have similar semantic meanings and sizes of tokens suitable for the model. A common way is to split by character with overlaps between chunks to keep the context. RecursiveCharacterTextSplitter splits the documents by the specified 'separators' parameter and get further chunked to the tokenizer's maximum sequence length if it is still large.
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-MARKDOWN_SEPARATORS = [
-    "\n#{1,6} ",
-    "```\n",
-    "\n\\*\\*\\*+\n",
-    "\n---+\n",
-    "\n___+\n",
-    "\n\n",
-    "\n",
-    " ",
-    "",
-]
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
+    MARKDOWN_SEPARATORS = [
+        "\n#{1,6} ",
+        "```\n",
+        "\n\\*\\*\\*+\n",
+        "\n---+\n",
+        "\n___+\n",
+        "\n\n",
+        "\n",
+        " ",
+        "",
+    ]
 
-text_splitter = RecursiveCharacterTextSplitter(
-    AutoTokenizer.from_pretrained(tokenizer_name),
-    chunk_size=AutoTokenizer.from_pretrained(tokenizer_name).max_seq_length, # The maximum number of characters in a chunk: we selected this value arbitrarily
-    chunk_overlap=int(chunk_size / 10),  # The number of characters to overlap between chunks
-    add_start_index=True,  # If `True`, includes chunk's start index in metadata
-    strip_whitespace=True,  # If `True`, strips whitespace from the start and end of every document
-    separators=MARKDOWN_SEPARATORS,
-)
+    text_splitter = RecursiveCharacterTextSplitter(
+    	AutoTokenizer.from_pretrained(tokenizer_name),
+    	chunk_size=AutoTokenizer.from_pretrained(tokenizer_name).max_seq_length, # The maximum number of characters in a chunk: we selected this value arbitrarily
+	    chunk_overlap=int(chunk_size / 10),  # The number of characters to overlap between chunks
+   	 add_start_index=True,  # If `True`, includes chunk's start index in metadata
+   	 strip_whitespace=True,  # If `True`, strips whitespace from the start and end of every document
+   	 separators=MARKDOWN_SEPARATORS,
+	)
 
 ### Embedding model
 Subsequently, both the documents and queries get embedded. Selecting sentence transformers model for embeddings would capture more semantic meanings and works well for large-scale data retrieval. Caching the embeddings in vector stores allows for similarity searching and quick access without needing re-computation. Selecting a model that was trained on both codes and natural language is necessary as the semantic similarities of typical English sentences differ from codes, yet the query is in natural language. Ideally, two separate models should be trained on the questions and answers. However, this would require a large dataset of question answer pairs which are not available.
-from langchain.embeddings import HuggingFaceEmbeddingsembedding_model = HuggingFaceEmbeddings(
-    model_name='./mlm_collator_code/model_tokenizer', # Use pre-trained model on corpus
-    multi_process=True,
-    model_kwargs={"device": "cuda"},
-    encode_kwargs={"normalize_embeddings": True},  # Set `True` for cosine similarity
-)
+	from langchain.embeddings import HuggingFace
+ 	Embeddingsembedding_model = HuggingFaceEmbeddings(
+    		model_name='./mlm_collator_code/model_tokenizer', # Use pre-trained model on corpus
+    		multi_process=True,
+    		model_kwargs={"device": "cuda"},
+   		 encode_kwargs={"normalize_embeddings": True},  # Set `True` for cosine similarity
+		)
 
 
 Depending on the length of the metadata, 512 input token length was found to be insufficient. Try using larger models. 
@@ -50,12 +51,12 @@ There are vector databases which involve storing, retrieving and indexing the em
 docs_processed: RecursiveCharacterTextSplitter(...).split_documents(docs)
 embedding_model: HuggingFaceEmbeddings(...) # Use own pre-trained model
 
-from langchain.vectorstores import FAISS
+	from langchain.vectorstores import FAISS
 
-vectorstore = FAISS.from_documents(
-    docs_processed, embedding_model, distance_strategy=DistanceStrategy.COSINE
-)
-retriever = vectorstore.as_retriever()	
+	vectorstore = FAISS.from_documents(
+    		docs_processed, embedding_model, distance_strategy=DistanceStrategy.COSINE
+		)
+	retriever = vectorstore.as_retriever()	
 
 OR CHROMA
 
