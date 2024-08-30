@@ -1,17 +1,16 @@
 # RAG
 Comprehensive RAG process from pretraining to evaluation
 
-Useful links: 
+## Useful links: 
 https://huggingface.co/learn/cookbook/en/advanced_rag
 https://www.kaggle.com/code/vbookshelf/kagglebot-gemma-7b-it-rag-w-few-shot-prompting#19--Rerank-(reorder)-the-search-results
 https://github.com/langchain-ai/langchain/blob/master/cookbook/Semi_structured_and_multi_modal_RAG.ipynb?ref=blog.langchain.dev
 https://python.langchain.com/v0.1/docs/use_cases/question_answering/chat_history/
 
-COOKBOOK IN KUBEFLOW: https://stvkubeflow.ds.jdsu.net/notebook/wbu-ai/one-gpu-wbu/lab/workspaces/auto-K/tree/tracey/rag/RAG_full_template.ipynb
-RAG Overview
+# RAG Overview
 RAG can be split into pre and on production. In pre-production, document loaders are used to prepare the input data which is then broken down into smaller chunks to fit in the embedding model’s context window. It could then be indexed in a vector database. Based on the query’s embedding, a retriever would pick out the necessary information from the database which will be used as the context to create the prompt. An answer would then be generated from the prompt using an LLM.  
-Pre-production
-Text Splitting
+## Pre-production
+### Text Splitting
 Ideally, text chunks have similar semantic meanings and sizes of tokens suitable for the model. A common way is to split by character with overlaps between chunks to keep the context. RecursiveCharacterTextSplitter splits the documents by the specified 'separators' parameter and get further chunked to the tokenizer's maximum sequence length if it is still large.
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 MARKDOWN_SEPARATORS = [
@@ -35,7 +34,7 @@ text_splitter = RecursiveCharacterTextSplitter(
     separators=MARKDOWN_SEPARATORS,
 )
 
-Embedding model
+### Embedding model
 Subsequently, both the documents and queries get embedded. Selecting sentence transformers model for embeddings would capture more semantic meanings and works well for large-scale data retrieval. Caching the embeddings in vector stores allows for similarity searching and quick access without needing re-computation. Selecting a model that was trained on both codes and natural language is necessary as the semantic similarities of typical English sentences differ from codes, yet the query is in natural language. Ideally, two separate models should be trained on the questions and answers. However, this would require a large dataset of question answer pairs which are not available.
 from langchain.embeddings import HuggingFaceEmbeddingsembedding_model = HuggingFaceEmbeddings(
     model_name='./mlm_collator_code/model_tokenizer', # Use pre-trained model on corpus
@@ -46,22 +45,26 @@ from langchain.embeddings import HuggingFaceEmbeddingsembedding_model = HuggingF
 
 
 Depending on the length of the metadata, 512 input token length was found to be insufficient. Try using larger models. 
-Vector Database/Store and Retriever
+### Vector Database/Store and Retriever
 There are vector databases which involve storing, retrieving and indexing the embeddings. They are able to perform more complex searches on the data, but vectorstores should be sufficient for our use case. Various vector store options include FAISS, Pinecone, Lance, Chroma and Deeplake. Some retrievers make use of similarity scores, top k, reciprocal rank fusion etc to filter the data. The query should be embedded too. 
 docs_processed: RecursiveCharacterTextSplitter(...).split_documents(docs)
 embedding_model: HuggingFaceEmbeddings(...) # Use own pre-trained model
-FAISS	Chroma
+
 from langchain.vectorstores import FAISS
 
 vectorstore = FAISS.from_documents(
     docs_processed, embedding_model, distance_strategy=DistanceStrategy.COSINE
 )
-retriever = vectorstore.as_retriever()	from langchain.vectorstores import Chroma
+retriever = vectorstore.as_retriever()	
+
+OR CHROMA
+
+from langchain.vectorstores import Chroma
 vectorstore = Chroma.from_documents(documents=docs_processed, embedding=embedding_model)
 retriever = vectorstore.as_retriever()
 The selection of retrievers would be dependent on the type of query asked, type of data and the expected size output chunk. Indexing then prevents duplication and modification of unchanged contents, should there be real-time updates of documents fed into the vector store. The transformer model/LLM could then use flash attention. It increases the speed as the keys, queries and values are loaded at once rather than a back-and-forth computation. FAISS and Chroma are rather easy to use - comparison of vectorstores can be found here.
-In Production
-Top k documents
+## In Production
+### Top k documents
 Given the experimental stage of this, generating labelled data containing queries, retrieved documents and outputs was not feasible. Hence, to improve the model slightly, a retrieval model was used for reranking of the retrieved documents as they use finer query and document interactions. There may be hallucinations if irrelevant documents are being extracted. 
 retrieved_docs = vectorstore.similarity_search(query=user_query, k=5)
 
@@ -69,16 +72,16 @@ from ragatouille import RAGPretrainedModel
 RERANKER = RAGPretrainedModel.from_pretrained("colbert-ir/colbertv2.0")relevant_docs = reranker.rerank(question, relevant_docs, k=num_docs_final)
 relevant_docs = [doc["content"] for doc in relevant_docs]
 relevant_docs = relevant_docs[:num_docs_final]
-Further improvements
-Pre-training model - Masked Language Modeling
+## Further improvements
+### Pre-training model - Masked Language Modeling
 Common methods to pre-train a model include Masked Language Modeling (MLM) and Next Sentence Prediction (NSP) - for Question Answering, Causal Language Modeling (CLM) - for text generation. Other text corruption strategies also include token masking, deletion, infilling and document rotation. Of these, MLM is better for a model’s contextual understanding with bidirectional learning. Input data like command logs may not have the clearest sentence separators for NSP as a pre-training method. 
 •	Tokenizer can first be trained on new corpus (deterministic update in splitting)
 tokenizer = tokenizer.train_new_from_iterator([doc.page_content for doc in docs_processed], tokenizer.vocab_size)
 •	Datacollator can be used for the data preparation which takes mlm_probability. Of this mlm_probability, 80% of it will be masked while 10% will be replaced with random words in the vocabulary and other 10% unchanged.
 •	Data can be packed as well (Packing and Splitting - data preparation for LLMs)
-Prompt engineering
+### Prompt engineering
 A structured prompt and query were fed into the reader LLM. The prompt had to be clear, specific, provide the appropriate context from the retriever, examples of expected output and a breakdown of the given task. Given a limited input window size, we had to make the prompt as concise as possible. Due to limited question-answer input data, having a well-trained dual encoder for questions and answers is not feasible. However, utilizing these examples as few shot prompts significantly improve the output instead. 
-Implementation
+### Implementation
 1.	Obtain a list of questions, the context and answer output from RAG, and the corrected answer
 2.	Save them into a dataframe to be referenced
 a.	df_fshot.columns = ['query','gem_context','response', 'corrected_text']
@@ -136,7 +139,7 @@ o	from langchain_core.example_selectors import NGramOverlapExampleSelector
 •	Diversity and relevance 
 o	from langchain_core.example_selectors import MaxMarginalRelevanceExampleSelector
 The list of examples are embedded into a vectorclass and fed into FewShotPromptTemplate along with the example selector to generate the prompt. 
-Chat History
+### Chat History
 Langchain chain
 As users may make reference to previous messages, using langchain to incorporate the chat history is needed. The output of huggingface's pipeline 'text generation' and langchain's ConversationBufferMemory would contain the entire text history. However, parsing it directly into the model is unfavorable due to limited input. Instead, with a huggingface token, the huggingface model could be initialized as a model in langchain which has MessageHistory which tracks the chat using a conversation ID. Chains enable us to combine multiple components into a single, coherent application. 
 llm = HuggingFaceEndpoint(
@@ -159,7 +162,7 @@ BaseMessage:  contains the string of message and additional fields like ID, name
 BaseRetriever: Runnable interface that returns list of retrieved documents (can use invoke, ainvoke (async), batch, abatch)
 Langchain.chains.combine_documents.stuff.create_stuff_documents_chain : Creates chain for passing list of document into model (has llm, prompt template (contain {context}), document prompt (format docs into string)) – documents extracted in manner which fits into the prompt’s context and into the model
 Langchain.chains.retrieval.create_retrieval_chain : input retriever and chombine_docs_chain . First retrieve necessary documents then into combine_docs_chain to be prepared for parsing into model
-Langchain ConversationSummaryBufferMemory
+### Langchain ConversationSummaryBufferMemory
 Aside from using the chain which stores the entire chat history, to paraphrase the query, a summary of chat history could be used. Previous k conversations could be retained with earlier conversations summarised to the token limit. (convo_summary_mem_buff). 
 from langchain.memory import ConversationSummaryBufferMemory
 from langchain.chains import ConversationChain
@@ -271,19 +274,19 @@ for ind, item in enumerate(retrieved_docs):
     doc_embedding.update({ind : embedding})
     similarity.append(cosine_similarity([query_vector, embedding])[0][1])
 print(similarity) # similarity coefficients of the retrieved documents followed by those relevant documents
-Post-process output
+## Post-process output
 If the output consistently gives specific redundant statements, it could be manually filtered: 
 Original output:
 "The provided context does not contain any specific details about ... Therefore, I am unable to provide an explanation or description for it based on this given text. Please refer to appropriate documentation related to your project where... might have been defined."
 Processed output:
 "Sorry, that information is not available."
-Evaluation experiments
+## Evaluation experiments
 Input a series of questions and check the output for unwanted phrases (eg. 'sure!' or 'From the context,'), hallucinations, and inaccurate information. Record the time taken for output to be generated. 
 5.	Robustness 
 a.	Input the same question with a slight grammatical error - varying output?
 b.	Input a long question - does the notebook crash? - length of context parsed and few-shot examples may need to be altered
 6.	Experiment the minimum context chunk size for accurate answer (typically 2-3) and the need for specifying the role of the system
-Handling images and tables for RAG
+## Handling images and tables for RAG
 Options:
 1) Embed images and text using CLIP, pass raw images and text into multimodal LLM 
 2) Summarize images and tables, embed all these as text, pass text into LLM
@@ -293,7 +296,7 @@ Considerations for selecting option 3:
 2) Summaries would be vague, despite being used to express complex ideas 
 3) Summaries are less important (only needed to identify relevant images for the RAG) as multimodal LLM are used
  
-Extracting Images, Texts, Tables
+### Extracting Images, Texts, Tables
 1) Unstructured (GitHub - Unstructured-IO/unstructured: Open source libraries and APIs to build custom preprocessing pipelines for labeling, training, or production machine learning pipelines.) parses the pdf to be represented as elements. Tables are saved as html to retain its formatting. Images are saved into an output directory. 
 2) Camelot (GitHub - atlanhq/camelot: Camelot: PDF Table Extraction for Humans) saves tables into csv file. OCR/Scjda/Mathpix can be used to extract diagrams from pdfs. 
 3) BeautifulSoup can be used to extract images, figure captions, and texts etc from HTML (urllib to parse website)
@@ -306,7 +309,7 @@ html = html_bytes.decode("utf-8")
 figcaption = soup.find_all("figcaption")
 txt = soup.get_text()
 images = soup.find_all("img")
-Directly embedding images
+### Directly embedding images
 1) CLIP (CLIP (huggingface.co))
 2) ImageBind (GitHub - facebookresearch/ImageBind: ImageBind One Embedding Space to Bind Them All)
 Summarizing Images and Tables before embedding
